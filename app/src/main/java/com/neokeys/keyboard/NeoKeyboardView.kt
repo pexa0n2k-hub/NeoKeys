@@ -12,6 +12,16 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var english = false
     private var shifted = false
+    private var navigationInsetPx = 0
+
+    fun setNavigationInsetPx(inset: Int) {
+        val value = max(0, inset)
+        if (navigationInsetPx != value) {
+            navigationInsetPx = value
+            requestLayout()
+            invalidate()
+        }
+    }
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
     private val rowsEs = listOf(
@@ -33,7 +43,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
-        val desired = (resources.displayMetrics.density * 278).toInt()
+        val desired = (resources.displayMetrics.density * 278).toInt() + navigationInsetPx
         setMeasuredDimension(w, resolveSize(desired, heightMeasureSpec))
     }
 
@@ -46,7 +56,8 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         keys.clear()
         val gap = 5*d
         val pad = 5*d
-        val rowH = height / 5f
+        val contentHeight = (height - navigationInsetPx).coerceAtLeast(1).toFloat()
+        val rowH = contentHeight / 5f
         fun addRow(labels: List<String>, row: Int, numeric: Boolean = false) {
             val total = width - 2*pad
             val unit = (total - gap*(labels.size-1))/labels.size
