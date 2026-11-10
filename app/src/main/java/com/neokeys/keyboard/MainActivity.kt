@@ -3,7 +3,6 @@ package com.neokeys.keyboard
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
@@ -14,7 +13,6 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
 
-    // Explicit return type and assignments avoid Kotlin's inferred apply-expression issue.
     private fun label(s:String,size:Float,color:Int=0xFFF3F6FF.toInt()): TextView {
         val view = TextView(this)
         view.text = s
@@ -38,12 +36,29 @@ class MainActivity : Activity() {
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(28),dp(20),dp(32));setBackgroundColor(0xFF0B1020.toInt())}
         val scroll=ScrollView(this).apply{addView(root)}
         root.addView(label("NeoKeys",36f))
-        root.addView(label("PREMIUM STUDIO • V2.0",12f,0xFF6F7DFF.toInt()).apply{setPadding(0,dp(4),0,dp(18))})
+        root.addView(label("PREMIUM STUDIO • V2.1",12f,0xFF6F7DFF.toInt()).apply{setPadding(0,dp(4),0,dp(18))})
         val hero=card("Tu teclado. Tu identidad.","Un centro de control para personalizar tu experiencia.")
         hero.addView(button("ACTIVAR NEOKEYS"){startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))})
         hero.addView(button("ELEGIR TECLADO"){(getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()})
         root.addView(hero,margin())
         status=label("Tus preferencias se guardan en este dispositivo.",12f,0xFF8FBDDB.toInt());root.addView(status)
+
+        val writing=card("Escritura inteligente","Autocorrección en español (México)")
+        val autocorrectButton = button("") { }
+        fun refreshAutocorrectButton() {
+            autocorrectButton.text = if(prefs.getBoolean("autocorrect_enabled",true)) "AUTOCORRECTOR ACTIVADO" else "AUTOCORRECTOR DESACTIVADO"
+        }
+        refreshAutocorrectButton()
+        autocorrectButton.setOnClickListener {
+            val enabled = !prefs.getBoolean("autocorrect_enabled",true)
+            prefs.edit().putBoolean("autocorrect_enabled",enabled).apply()
+            refreshAutocorrectButton()
+            status.text = if(enabled) "Autocorrector en español activado" else "Autocorrector desactivado"
+        }
+        writing.addView(autocorrectButton)
+        writing.addView(label("Corrige palabras al pulsar espacio. Requiere que Android tenga un corrector de español disponible.",11f,0xFF9FB2D1.toInt()))
+        root.addView(writing,margin())
+
         val themes=listOf("Violet Glass" to "violet","Cyber Pulse" to "cyber","Ivory Minimal" to "ivory","Emerald OS" to "emerald","Crimson" to "crimson","Sakura" to "sakura","Holographic" to "holo","Titanium" to "titanium")
         val theme=card("Colección de temas","Ocho identidades visuales")
         addChoices(theme,themes.map{(n,id)->n to {save("theme",id,n)}});root.addView(theme,margin())
