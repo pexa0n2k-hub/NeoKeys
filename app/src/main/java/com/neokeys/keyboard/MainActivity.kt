@@ -15,10 +15,13 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        buildScreen()
+    }
 
+    private fun buildScreen() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 48, 32, 32)
+            setPadding(32, 40, 32, 32)
             setBackgroundColor(0xFF101722.toInt())
         }
         val title = TextView(this).apply {
@@ -27,10 +30,10 @@ class MainActivity : Activity() {
             setTextColor(0xFFEAF2FF.toInt())
         }
         val subtitle = TextView(this).apply {
-            text = "LIQUID GLASS • V1.3\nEspañol + English · Símbolos · Respuesta háptica"
+            text = "LIQUID GLASS • V1.4\nPersonaliza la apariencia de tu teclado"
             textSize = 15f
             setTextColor(0xFFB8C9E8.toInt())
-            setPadding(0, 12, 0, 24)
+            setPadding(0, 12, 0, 20)
         }
         val enable = Button(this).apply {
             text = "1. Activar NeoKeys"
@@ -43,30 +46,78 @@ class MainActivity : Activity() {
                 imm.showInputMethodPicker()
             }
         }
-        val settingsTitle = TextView(this).apply {
-            text = "PERSONALIZACIÓN DEL TECLADO"
+        val section = TextView(this).apply {
+            text = "TEMAS"
             textSize = 14f
             setTextColor(0xFF8FD7FF.toInt())
-            setPadding(0, 28, 0, 8)
+            setPadding(0, 22, 0, 8)
         }
-        val heightLabel = TextView(this).apply {
-            textSize = 15f
+        val themeInfo = TextView(this).apply {
+            textSize = 14f
             setTextColor(0xFFEAF2FF.toInt())
         }
-        fun refreshHeightLabel() {
-            heightLabel.text = "Altura actual: ${prefs.getInt("keyboard_height_dp", 278)} dp"
+        fun updateThemeInfo() {
+            themeInfo.text = "Tema actual: " + when (prefs.getString("theme", "ocean")) {
+                "midnight" -> "Midnight"
+                "rose" -> "Rose"
+                "emerald" -> "Emerald"
+                else -> "Ocean"
+            }
         }
-        refreshHeightLabel()
+        updateThemeInfo()
 
-        val heightButtons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val themeButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("Ocean" to "ocean", "Midnight" to "midnight", "Rose" to "rose", "Emerald" to "emerald").forEach { (label, id) ->
+            themeButtons.addView(Button(this).apply {
+                text = label
+                setOnClickListener {
+                    prefs.edit().putString("theme", id).apply()
+                    updateThemeInfo()
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
+
+        val opacityTitle = TextView(this).apply {
+            text = "TRANSPARENCIA DE TECLAS"
+            textSize = 14f
+            setTextColor(0xFF8FD7FF.toInt())
+            setPadding(0, 18, 0, 8)
+        }
+        val opacityInfo = TextView(this).apply {
+            textSize = 14f
+            setTextColor(0xFFEAF2FF.toInt())
+        }
+        fun updateOpacityInfo() {
+            opacityInfo.text = "Opacidad: ${prefs.getInt("key_opacity", 90)}%"
+        }
+        updateOpacityInfo()
+        val opacityButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(60, 75, 90, 100).forEach { value ->
+            opacityButtons.addView(Button(this).apply {
+                text = "$value%"
+                setOnClickListener {
+                    prefs.edit().putInt("key_opacity", value).apply()
+                    updateOpacityInfo()
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+        val heightInfo = TextView(this).apply {
+            textSize = 14f
+            setTextColor(0xFFEAF2FF.toInt())
+            setPadding(0, 18, 0, 4)
+        }
+        fun updateHeightInfo() {
+            heightInfo.text = "Altura: ${prefs.getInt("keyboard_height_dp", 278)} dp"
+        }
+        updateHeightInfo()
+        val heightButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf(250, 278, 310, 340).forEach { value ->
             heightButtons.addView(Button(this).apply {
                 text = value.toString()
                 setOnClickListener {
                     prefs.edit().putInt("keyboard_height_dp", value).apply()
-                    refreshHeightLabel()
+                    updateHeightInfo()
                 }
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -80,17 +131,23 @@ class MainActivity : Activity() {
             }
         }
         val note = TextView(this).apply {
-            text = "Los cambios de altura se aplican al volver a abrir el teclado. La vibración se puede activar o desactivar aquí."
-            textSize = 14f
+            text = "Los cambios visuales se aplican al abrir nuevamente el teclado. Se conservan los idiomas, símbolos, vibración, animación y borrado continuo."
+            textSize = 13f
             setTextColor(0xFFB8C9E8.toInt())
-            setPadding(0, 20, 0, 0)
+            setPadding(0, 18, 0, 0)
         }
+
         root.addView(title)
         root.addView(subtitle)
         root.addView(enable)
         root.addView(choose)
-        root.addView(settingsTitle)
-        root.addView(heightLabel)
+        root.addView(section)
+        root.addView(themeInfo)
+        root.addView(themeButtons)
+        root.addView(opacityTitle)
+        root.addView(opacityInfo)
+        root.addView(opacityButtons)
+        root.addView(heightInfo)
         root.addView(heightButtons)
         root.addView(haptics)
         root.addView(note)

@@ -24,6 +24,34 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
 
+    private data class Theme(
+        val background: Int,
+        val panel: Int,
+        val key: Int,
+        val special: Int,
+        val accent: Int,
+        val text: Int
+    )
+
+    private fun currentTheme(): Theme {
+        val prefs = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
+        return when (prefs.getString("theme", "ocean")) {
+            "midnight" -> Theme(0xFF080B12.toInt(), 0xFF111827.toInt(), 0xFF273449.toInt(), 0xFF39465D.toInt(), 0xFF9BB7FF.toInt(), 0xFFF3F6FF.toInt())
+            "rose" -> Theme(0xFF180F19.toInt(), 0xFF2A1829.toInt(), 0xFF56334F.toInt(), 0xFF75415F.toInt(), 0xFFFFA6D5.toInt(), 0xFFFFF1F8.toInt())
+            "emerald" -> Theme(0xFF081713.toInt(), 0xFF102820.toInt(), 0xFF245342.toInt(), 0xFF326B55.toInt(), 0xFF8AF0C2.toInt(), 0xFFEFFFF7.toInt())
+            else -> Theme(0xFF101722.toInt(), 0xFF182435.toInt(), 0xCC526984.toInt(), 0xFF34465E.toInt(), 0xFF8FD7FF.toInt(), 0xFFF3F7FF.toInt())
+        }
+    }
+
+    private val keyboardHeightDp: Int
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getInt("keyboard_height_dp", 278)
+
+    private val hapticsEnabled: Boolean
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getBoolean("haptics_enabled", true)
+
+    private val keyOpacity: Int
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getInt("key_opacity", 90).coerceIn(40, 100)
+
     private val rowsEs = listOf(
         listOf("q","w","e","r","t","y","u","i","o","p"),
         listOf("a","s","d","f","g","h","j","k","l","ñ"),
@@ -41,14 +69,6 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     )
     private val numbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
-    private val keyboardHeightDp: Int
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
-            .getInt("keyboard_height_dp", 278)
-
-    private val hapticsEnabled: Boolean
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
-            .getBoolean("haptics_enabled", true)
-
     private val deleteRepeat = object : Runnable {
         override fun run() {
             if (pressedValue == "DELETE") {
@@ -61,6 +81,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
 
     fun toggleLanguage() { english = !english; invalidate() }
     fun toggleShift() { shifted = !shifted; invalidate() }
+    fun refreshAppearance() { invalidate(); requestLayout() }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -71,8 +92,12 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val d = resources.displayMetrics.density
-        canvas.drawColor(0xFF101722.toInt())
-        paint.color = 0xFF182435.toInt()
+        val theme = currentTheme()
+        val opacity = (keyOpacity * 255 / 100).coerceIn(0, 255)
+
+        canvas.drawColor(theme.background)
+        paint.style = Paint.Style.FILL
+        paint.color = theme.panel
         canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), 20*d, 20*d, paint)
 
         keys.clear()
@@ -94,39 +119,32 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     else -> label
                 }
                 keys.add(Key(label, value, rect))
-
-                val isPressed = pressedValue == value && pressedRect?.let {
-                    it.left == rect.left && it.top == rect.top
-                } == true
+                val isPressed = pressedValue == value && pressedRect?.let { it.left == rect.left && it.top == rect.top } == true
                 paint.color = when {
-                    isPressed -> 0xFF83BCEB.toInt()
-                    label in listOf("⇧","⌫","↵") -> 0xFF34465E.toInt()
-                    else -> 0xCC526984.toInt()
+                    isPressed -> theme.accent
+                    label in listOf("⇧","⌫","↵") -> theme.special
+                    else -> theme.key
                 }
+                paint.alpha = if (isPressed) 255 else opacity
                 canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+                paint.alpha = 255
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = if (isPressed) 2*d else 1*d
-                paint.color = if (isPressed) 0xFFB9E5FF.toInt() else 0x668FD7FF
-                canvas.drawRoundRect(
-                    RectF(rect.left+d, rect.top+d, rect.right-d, rect.bottom-d),
-                    9*d, 9*d, paint
-                )
+                paint.color = theme.accent
+                paint.alpha = if (isPressed) 230 else 90
+                canvas.drawRoundRect(RectF(rect.left+d, rect.top+d, rect.right-d, rect.bottom-d), 9*d, 9*d, paint)
                 paint.style = Paint.Style.FILL
-                paint.color = 0xFFF3F7FF.toInt()
+                paint.alpha = 255
+                paint.color = theme.text
                 paint.textAlign = Paint.Align.CENTER
                 paint.textSize = if (label.length > 3) 12*d else 18*d
                 val shown = if (shifted && label.length == 1 && !symbolMode) label.uppercase() else label
-                canvas.drawText(shown, rect.centerX(),
-                    rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
+                canvas.drawText(shown, rect.centerX(), rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
             }
         }
 
         addRow(numbers, 0)
-        val activeRows = when {
-            symbolMode -> symbolRows
-            english -> rowsEn
-            else -> rowsEs
-        }
+        val activeRows = when { symbolMode -> symbolRows; english -> rowsEn; else -> rowsEs }
         activeRows.forEachIndexed { i, row -> addRow(row, i+1) }
 
         val bottomY = 4*rowH + 4*d
@@ -143,28 +161,27 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             val rectW = usable*fraction
             val rect = RectF(x, bottomY, x+rectW, bottomY+bottomH)
             keys.add(Key(label, value, rect))
-            val isPressed = pressedValue == value && pressedRect?.let {
-                it.left == rect.left && it.top == rect.top
-            } == true
+            val isPressed = pressedValue == value && pressedRect?.let { it.left == rect.left && it.top == rect.top } == true
             paint.color = when {
-                isPressed -> 0xFF83BCEB.toInt()
-                value == "SPACE" -> 0xCC526984.toInt()
-                else -> 0xFF34465E.toInt()
+                isPressed -> theme.accent
+                value == "SPACE" -> theme.key
+                else -> theme.special
             }
+            paint.alpha = if (isPressed) 255 else opacity
             canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+            paint.alpha = 255
             if (isPressed) {
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 2*d
-                paint.color = 0xFFB9E5FF.toInt()
+                paint.color = theme.accent
                 canvas.drawRoundRect(rect, 9*d, 9*d, paint)
                 paint.style = Paint.Style.FILL
             }
-            paint.color = 0xFFF3F7FF.toInt()
+            paint.color = theme.text
             paint.textAlign = Paint.Align.CENTER
             paint.textSize = if (label == "space") 11*d else 16*d
             val shown = if (label == "space") { if (english) "English" else "Español" } else label
-            canvas.drawText(shown, rect.centerX(),
-                rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
+            canvas.drawText(shown, rect.centerX(), rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
             x += rectW + gap
         }
     }
@@ -175,9 +192,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         handler.postDelayed(deleteRepeat, 400L)
     }
 
-    private fun stopDeleteRepeat() {
-        handler.removeCallbacks(deleteRepeat)
-    }
+    private fun stopDeleteRepeat() { handler.removeCallbacks(deleteRepeat) }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
@@ -185,9 +200,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
                 pressedValue = key?.value
                 pressedRect = key?.rect?.let { RectF(it) }
-                if (key != null && hapticsEnabled) {
-                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                }
+                if (key != null && hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 if (key?.value == "DELETE") startDeleteRepeat()
                 invalidate()
                 return true
@@ -195,7 +208,6 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             MotionEvent.ACTION_UP -> {
                 val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
                 stopDeleteRepeat()
-                val wasDelete = pressedValue == "DELETE"
                 pressedValue = null
                 pressedRect = null
                 invalidate()
