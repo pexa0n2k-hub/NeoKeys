@@ -4,16 +4,22 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 
 class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val handler = Handler(Looper.getMainLooper())
+
     private var english = false
     private var shifted = false
     private var symbolMode = false
-    private var pressedKey: Key? = null
+    private var pressedValue: String? = null
+    private var pressedRect: RectF? = null
+    private var deleteRepeating = false
 
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
@@ -42,6 +48,16 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private val hapticsEnabled: Boolean
         get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
             .getBoolean("haptics_enabled", true)
+
+    private val deleteRepeat = object : Runnable {
+        override fun run() {
+            if (pressedValue == "DELETE") {
+                onKey("DELETE")
+                deleteRepeating = true
+                handler.postDelayed(this, 65L)
+            }
+        }
+    }
 
     fun toggleLanguage() { english = !english; invalidate() }
     fun toggleShift() { shifted = !shifted; invalidate() }
@@ -77,18 +93,20 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     "↵" -> "ENTER"
                     else -> label
                 }
-                val key = Key(label, value, rect)
-                keys.add(key)
+                keys.add(Key(label, value, rect))
 
+                val isPressed = pressedValue == value && pressedRect?.let {
+                    it.left == rect.left && it.top == rect.top
+                } == true
                 paint.color = when {
-                    pressedKey === key -> 0xFF6687A8.toInt()
+                    isPressed -> 0xFF83BCEB.toInt()
                     label in listOf("⇧","⌫","↵") -> 0xFF34465E.toInt()
                     else -> 0xCC526984.toInt()
                 }
                 canvas.drawRoundRect(rect, 9*d, 9*d, paint)
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 1*d
-                paint.color = 0x668FD7FF
+                paint.strokeWidth = if (isPressed) 2*d else 1*d
+                paint.color = if (isPressed) 0xFFB9E5FF.toInt() else 0x668FD7FF
                 canvas.drawRoundRect(
                     RectF(rect.left+d, rect.top+d, rect.right-d, rect.bottom-d),
                     9*d, 9*d, paint
@@ -124,14 +142,23 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         specs.forEach { (label, fraction, value) ->
             val rectW = usable*fraction
             val rect = RectF(x, bottomY, x+rectW, bottomY+bottomH)
-            val key = Key(label, value, rect)
-            keys.add(key)
+            keys.add(Key(label, value, rect))
+            val isPressed = pressedValue == value && pressedRect?.let {
+                it.left == rect.left && it.top == rect.top
+            } == true
             paint.color = when {
-                pressedKey === key -> 0xFF6687A8.toInt()
+                isPressed -> 0xFF83BCEB.toInt()
                 value == "SPACE" -> 0xCC526984.toInt()
                 else -> 0xFF34465E.toInt()
             }
             canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+            if (isPressed) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2*d
+                paint.color = 0xFFB9E5FF.toInt()
+                canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+                paint.style = Paint.Style.FILL
+            }
             paint.color = 0xFFF3F7FF.toInt()
             paint.textAlign = Paint.Align.CENTER
             paint.textSize = if (label == "space") 11*d else 16*d
@@ -142,38 +169,64 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         }
     }
 
+    private fun startDeleteRepeat() {
+        handler.removeCallbacks(deleteRepeat)
+        deleteRepeating = false
+        handler.postDelayed(deleteRepeat, 400L)
+    }
+
+    private fun stopDeleteRepeat() {
+        handler.removeCallbacks(deleteRepeat)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                pressedKey = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
-                if (pressedKey != null && hapticsEnabled) {
+                val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
+                pressedValue = key?.value
+                pressedRect = key?.rect?.let { RectF(it) }
+                if (key != null && hapticsEnabled) {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 }
+                if (key?.value == "DELETE") startDeleteRepeat()
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
-                pressedKey = null
+                stopDeleteRepeat()
+                val wasDelete = pressedValue == "DELETE"
+                pressedValue = null
+                pressedRect = null
                 invalidate()
                 if (key != null) when (key.value) {
                     "SHIFT" -> { shifted = !shifted; invalidate() }
                     "LANG" -> { english = !english; invalidate() }
                     "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
-                    "SPACE", "DELETE", "ENTER" -> onKey(key.value)
+                    "DELETE" -> if (!deleteRepeating && !wasDelete) onKey("DELETE")
+                    "SPACE", "ENTER" -> onKey(key.value)
                     else -> {
                         onKey(if (shifted && !symbolMode) key.value.uppercase() else key.value.trim())
                         if (shifted) { shifted = false; invalidate() }
                     }
                 }
+                deleteRepeating = false
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                pressedKey = null
+                stopDeleteRepeat()
+                pressedValue = null
+                pressedRect = null
+                deleteRepeating = false
                 invalidate()
                 return true
             }
         }
         return true
+    }
+
+    override fun onDetachedFromWindow() {
+        stopDeleteRepeat()
+        super.onDetachedFromWindow()
     }
 }
