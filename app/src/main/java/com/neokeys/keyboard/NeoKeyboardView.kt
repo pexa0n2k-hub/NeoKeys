@@ -28,6 +28,12 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private var deleteRepeating = false
     private var toolsMode = false
     private val toolTargets = mutableListOf<Pair<RectF, String>>()
+    private var suggestions: List<String> = emptyList()
+
+    fun updateSuggestions(words: List<String>) {
+        suggestions = words.take(3)
+        invalidate()
+    }
 
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
@@ -260,23 +266,48 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         paint.alpha = 235
         canvas.drawRoundRect(toolbarRect, 14*d, 14*d, paint)
         paint.alpha = 255
-        val toolbarItems = listOf(
-            Triple("☰", 0.16f, "TOOLS"),
-            Triple("▦", 0.16f, "TOOLS"),
-            Triple("🎨", 0.16f, "TOOLS"),
-            Triple("🌐", 0.16f, "LANG"),
-            Triple("⌫", 0.16f, "DELETE")
-        )
-        val itemW = toolbarRect.width() / toolbarItems.size
-        toolbarItems.forEachIndexed { index, item ->
-            val (label, _, value) = item
-            val rect = RectF(toolbarRect.left + index*itemW, toolbarRect.top,
-                toolbarRect.left + (index+1)*itemW, toolbarRect.bottom)
-            keys.add(Key(label, value, rect))
-            paint.color = if (pressedValue == value && pressedRect?.left == rect.left) theme.accent else theme.text
-            paint.textAlign = Paint.Align.CENTER
-            paint.textSize = 18*d
-            canvas.drawText(label, rect.centerX(), rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
+        // Three live suggestions; the menu remains accessible at the left.
+        val menuWidth = 43*d
+        val menuRect = RectF(toolbarRect.left, toolbarRect.top,
+            toolbarRect.left+menuWidth, toolbarRect.bottom)
+        keys.add(Key("☰", "TOOLS", menuRect))
+        paint.color = theme.text
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 18*d
+        canvas.drawText("☰", menuRect.centerX(),
+            menuRect.centerY()-(paint.ascent()+paint.descent())/2, paint)
+
+        val words = if (symbolMode) emptyList() else suggestions
+        if (words.isEmpty()) {
+            val items = listOf("▦" to "TOOLS", "🎨" to "TOOLS", "🌐" to "LANG")
+            val slot = (toolbarRect.right-menuRect.right)/items.size
+            items.forEachIndexed { i, pair ->
+                val rect = RectF(menuRect.right+i*slot,toolbarRect.top,
+                    menuRect.right+(i+1)*slot,toolbarRect.bottom)
+                keys.add(Key(pair.first,pair.second,rect))
+                paint.color=theme.text
+                paint.textSize=17*d
+                canvas.drawText(pair.first,rect.centerX(),
+                    rect.centerY()-(paint.ascent()+paint.descent())/2,paint)
+            }
+        } else {
+            val slot = (toolbarRect.right-menuRect.right)/3f
+            words.forEachIndexed { i, word ->
+                val rect = RectF(menuRect.right+i*slot,toolbarRect.top,
+                    menuRect.right+(i+1)*slot,toolbarRect.bottom)
+                keys.add(Key(word,"SUGGEST:"+word,rect))
+                paint.color = if (i == 1) theme.accent else theme.text
+                paint.textSize = if (word.length > 12) 12*d else 15*d
+                canvas.drawText(word.take(15),rect.centerX(),
+                    rect.centerY()-(paint.ascent()+paint.descent())/2,paint)
+                if (i < 2) {
+                    paint.color=theme.accent
+                    paint.alpha=75
+                    paint.strokeWidth=d
+                    canvas.drawLine(rect.right,rect.top+5*d,rect.right,rect.bottom-5*d,paint)
+                    paint.alpha=255
+                }
+            }
         }
 
         fun addRow(labels: List<String>, row: Int) {
@@ -394,8 +425,11 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             "TOOLS" -> { toolsMode = true; invalidate() }
             "SETTINGS" -> onKey("SETTINGS")
             else -> {
-                onKey(if (shifted && !symbolMode) value.uppercase() else value.trim())
-                if (shifted) { shifted = false; invalidate() }
+                if (value.startsWith("SUGGEST:")) onKey(value)
+                else {
+                    onKey(if (shifted && !symbolMode) value.uppercase() else value.trim())
+                    if (shifted) { shifted = false; invalidate() }
+                }
             }
         }
     }

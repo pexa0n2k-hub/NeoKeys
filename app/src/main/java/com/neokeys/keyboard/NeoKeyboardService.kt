@@ -4,116 +4,94 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.view.View
-import android.view.textservice.SentenceSuggestionsInfo
-import android.view.textservice.SpellCheckerSession
-import android.view.textservice.SuggestionsInfo
-import android.view.textservice.TextInfo
-import android.view.textservice.TextServicesManager
 import java.util.Locale
 
-class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellCheckerSessionListener {
+class NeoKeyboardService : InputMethodService() {
     private var keyboard: NeoKeyboardView? = null
-    private var spellCheckerSession: SpellCheckerSession? = null
-    private var pendingWord: String? = null
-    private var spellCheckPending = false
+    private val wordAtCursor = Regex("([\\p{L}]{1,40})$")
 
     override fun onCreateInputView(): View {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window?.window?.setDecorFitsSystemWindows(true)
         }
-        ensureSpanishSpellChecker()
-        val inputView = NeoKeyboardView(this) { action ->
-            when (action) {
-                "SETTINGS" -> {
-                    val intent = Intent(this, MainActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                }
+        val view = NeoKeyboardView(this) { action ->
+            when {
+                action == "SETTINGS" -> startActivity(
+                    Intent(this, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                action.startsWith("SUGGEST:") -> applySuggestion(action.removePrefix("SUGGEST:"))
                 else -> {
                     val ic = currentInputConnection ?: return@NeoKeyboardView
                     when (action) {
                         "DELETE" -> ic.deleteSurroundingText(1, 0)
                         "SPACE" -> {
-                            ic.commitText(" ", 1)
-                            requestSpanishCorrection()
+                            val original = currentWord()
+                            val correction = if (enabled() && original != null)
+                                SpanishWordPredictor.correction(original) else null
+                            if (original != null && correction != null) {
+                                ic.beginBatchEdit()
+                                ic.deleteSurroundingText(original.length, 0)
+                                ic.commitText(matchCase(original, correction) + " ", 1)
+                                ic.endBatchEdit()
+                            } else ic.commitText(" ", 1)
                         }
                         "ENTER" -> ic.commitText("\n", 1)
-                        "LANG" -> keyboard?.toggleLanguage()
+                        "LANG" -> viewLanguage()
                         "SHIFT" -> keyboard?.toggleShift()
                         else -> ic.commitText(action, 1)
                     }
+                    refreshSuggestions()
                 }
             }
         }
-        keyboard = inputView
-        return inputView
+        keyboard = view
+        refreshSuggestions()
+        return view
     }
 
-    private fun ensureSpanishSpellChecker() {
-        if (spellCheckerSession != null) return
-        try {
-            val manager = getSystemService(TEXT_SERVICES_MANAGER_SERVICE) as TextServicesManager
-            spellCheckerSession = manager.newSpellCheckerSession(null, Locale("es", "MX"), this, false)
-        } catch (_: Exception) {
-            spellCheckerSession = null
-        }
+    private fun viewLanguage() {
+        keyboard?.toggleLanguage()
+        keyboard?.updateSuggestions(emptyList())
     }
 
-    private fun requestSpanishCorrection() {
-        if (!getSharedPreferences("neokeys_settings", MODE_PRIVATE)
-                .getBoolean("autocorrect_enabled", true)) return
-        val session = spellCheckerSession ?: return
-        if (spellCheckPending) return
+    private fun enabled() = getSharedPreferences("neokeys_settings", MODE_PRIVATE)
+        .getBoolean("autocorrect_enabled", true)
 
-        val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString() ?: return
-        val match = Regex("([\\p{L}]{3,}) $").find(before) ?: return
-        val word = match.groupValues[1]
-        if (word.length > 30) return
-
-        pendingWord = word
-        spellCheckPending = true
-        try {
-            session.getSuggestions(arrayOf(TextInfo(word)), 5, false)
-        } catch (_: Exception) {
-            spellCheckPending = false
-            pendingWord = null
-        }
+    private fun currentWord(): String? {
+        val text = currentInputConnection?.getTextBeforeCursor(80, 0)?.toString() ?: return null
+        return wordAtCursor.find(text)?.groupValues?.get(1)
     }
 
-    override fun onGetSuggestions(results: Array<SuggestionsInfo>) {
-        val original = pendingWord
-        spellCheckPending = false
-        pendingWord = null
-        if (original == null || results.isEmpty()) return
+    private fun matchCase(original: String, replacement: String): String =
+        if (original.firstOrNull()?.isUpperCase() == true)
+            replacement.replaceFirstChar { it.uppercase(Locale("es", "MX")) }
+        else replacement
 
-        val suggestion = results[0]
-        val looksLikeTypo = suggestion.suggestionsAttributes and
-            SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO != 0
-        if (!looksLikeTypo || suggestion.suggestionsCount <= 0) return
+    private fun refreshSuggestions() {
+        val word = if (enabled()) currentWord() else null
+        keyboard?.updateSuggestions(
+            if (word.isNullOrBlank()) emptyList()
+            else SpanishWordPredictor.suggestions(word)
+        )
+    }
 
-        var replacement = suggestion.getSuggestionAt(0) ?: return
-        if (replacement.isBlank() || replacement.any { it.isWhitespace() }) return
-        if (original.firstOrNull()?.isUpperCase() == true) {
-            replacement = replacement.replaceFirstChar { it.uppercase(Locale("es", "MX")) }
-        }
-        if (replacement.equals(original, ignoreCase = true)) return
-
+    private fun applySuggestion(selected: String) {
         val ic = currentInputConnection ?: return
-        val expectedSuffix = "$original "
-        val actualSuffix = ic.getTextBeforeCursor(expectedSuffix.length, 0)?.toString()
-        if (actualSuffix == expectedSuffix) {
-            ic.deleteSurroundingText(expectedSuffix.length, 0)
-            ic.commitText("$replacement ", 1)
-        }
+        val word = currentWord() ?: return
+        if (selected.isBlank() || selected.any { !it.isLetter() }) return
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(word.length, 0)
+        ic.commitText(matchCase(word, selected), 1)
+        ic.endBatchEdit()
+        refreshSuggestions()
     }
 
-    override fun onGetSentenceSuggestions(results: Array<SentenceSuggestionsInfo>) {
-        // Sentence suggestions are not used in this first Spanish autocorrect version.
+    override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        refreshSuggestions()
     }
 
     override fun onDestroy() {
-        spellCheckerSession?.close()
-        spellCheckerSession = null
         keyboard = null
         super.onDestroy()
     }
