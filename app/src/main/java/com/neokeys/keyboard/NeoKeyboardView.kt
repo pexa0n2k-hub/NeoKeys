@@ -140,6 +140,38 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private val pressEffect: String
         get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getString("press_effect", "glow") ?: "glow"
 
+    private fun drawPremiumKey(canvas: Canvas, rect: RectF, radius: Float, baseColor: Int, pressed: Boolean) {
+        val top = if (pressed) currentTheme().accent else lighten(baseColor, 0.22f)
+        val bottom = darken(baseColor, 0.18f)
+        paint.shader = android.graphics.LinearGradient(
+            rect.left, rect.top, rect.left, rect.bottom, top, bottom,
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+        drawKey(canvas, rect, radius)
+        paint.shader = null
+        // Refined highlight line along the upper edge.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = resources.displayMetrics.density
+        paint.color = 0xBFFFFFFF.toInt()
+        paint.alpha = 70
+        canvas.drawRoundRect(RectF(rect.left+1f, rect.top+1f, rect.right-1f, rect.bottom-1f),
+            radius, radius, paint)
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+    }
+
+    private fun lighten(color: Int, amount: Float): Int {
+        fun ch(shift: Int) = (((color shr shift) and 0xFF) + (255 - ((color shr shift) and 0xFF))*amount).toInt().coerceIn(0,255)
+        return android.graphics.Color.argb(255, ch(16), ch(8), ch(0))
+    }
+
+    private fun darken(color: Int, amount: Float): Int {
+        fun ch(shift: Int) = (((color shr shift) and 0xFF)*(1f-amount)).toInt().coerceIn(0,255)
+        return android.graphics.Color.argb(255, ch(16), ch(8), ch(0))
+    }
+
     private fun drawKey(canvas: Canvas, rect: RectF, radius: Float) {
         val path = android.graphics.Path()
         when (keyShape) {
@@ -180,14 +212,42 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         keys.clear()
         val gap = 5*d
         val pad = 5*d
-        val rowH = height / 5f
+        val toolbarH = 34*d
+        val contentTop = toolbarH
+        val rowH = (height - toolbarH) / 5f
+
+        // Barra de acceso rápido integrada en el teclado.
+        val toolbarRect = RectF(pad, 3*d, width-pad, toolbarH-2*d)
+        paint.style = Paint.Style.FILL
+        paint.color = theme.panel
+        paint.alpha = 235
+        canvas.drawRoundRect(toolbarRect, 14*d, 14*d, paint)
+        paint.alpha = 255
+        val toolbarItems = listOf(
+            Triple("⚙", 0.16f, "SETTINGS"),
+            Triple("🎨", 0.16f, "SETTINGS"),
+            Triple("▦", 0.16f, "SETTINGS"),
+            Triple("🌐", 0.16f, "LANG"),
+            Triple("⌫", 0.16f, "DELETE")
+        )
+        val itemW = toolbarRect.width() / toolbarItems.size
+        toolbarItems.forEachIndexed { index, item ->
+            val (label, _, value) = item
+            val rect = RectF(toolbarRect.left + index*itemW, toolbarRect.top,
+                toolbarRect.left + (index+1)*itemW, toolbarRect.bottom)
+            keys.add(Key(label, value, rect))
+            paint.color = if (pressedValue == value && pressedRect?.left == rect.left) theme.accent else theme.text
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = 18*d
+            canvas.drawText(label, rect.centerX(), rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
+        }
 
         fun addRow(labels: List<String>, row: Int) {
             val total = width - 2*pad
             val unit = (total - gap*(labels.size-1))/labels.size
             labels.forEachIndexed { i, label ->
                 val x = pad + i*(unit+gap)
-                val y = row*rowH + 4*d
+                val y = contentTop + row*rowH + 4*d
                 val rect = RectF(x, y, x+unit, y+rowH-7*d)
                 val value = when (label) {
                     "⇧" -> "SHIFT"
@@ -203,7 +263,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     else -> theme.key
                 }
                 paint.alpha = if (isPressed) 255 else opacity
-                drawKey(canvas, rect, 9*d)
+                drawPremiumKey(canvas, rect, 9*d, paint.color, isPressed)
                 paint.alpha = 255
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = (1f + glassIntensity / 100f)*d
@@ -239,7 +299,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         val activeRows = when { symbolMode -> symbolRows; english -> rowsEn; else -> rowsEs }
         activeRows.forEachIndexed { i, row -> addRow(row, i+1) }
 
-        val bottomY = 4*rowH + 4*d
+        val bottomY = contentTop + 4*rowH + 4*d
         val bottomH = rowH - 7*d
         val modeLabel = if (symbolMode) "ABC" else "?123"
         val specs = listOf(
@@ -260,7 +320,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 else -> theme.special
             }
             paint.alpha = if (isPressed) 255 else opacity
-            drawKey(canvas, rect, 9*d)
+            drawPremiumKey(canvas, rect, 9*d, paint.color, isPressed)
             paint.alpha = 255
             if (isPressed) {
                 paint.style = Paint.Style.STROKE
@@ -285,6 +345,23 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
     private fun stopDeleteRepeat() { handler.removeCallbacks(deleteRepeat) }
 
+    private var downHandled = false
+
+    private fun dispatchKey(value: String) {
+        when (value) {
+            "SHIFT" -> { shifted = !shifted; invalidate() }
+            "LANG" -> { english = !english; invalidate() }
+            "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
+            "DELETE" -> onKey("DELETE")
+            "SPACE", "ENTER" -> onKey(value)
+            "SETTINGS" -> onKey("SETTINGS")
+            else -> {
+                onKey(if (shifted && !symbolMode) value.uppercase() else value.trim())
+                if (shifted) { shifted = false; invalidate() }
+            }
+        }
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -292,7 +369,13 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 pressedValue = key?.value
                 pressedRect = key?.rect?.let { RectF(it) }
                 if (key != null && hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                if (key?.value == "DELETE") startDeleteRepeat()
+                downHandled = false
+                if (key?.value == "DELETE") {
+                    startDeleteRepeat()
+                } else if (key != null) {
+                    dispatchKey(key.value)
+                    downHandled = true
+                }
                 invalidate()
                 return true
             }
@@ -302,18 +385,9 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 pressedValue = null
                 pressedRect = null
                 invalidate()
-                if (key != null) when (key.value) {
-                    "SHIFT" -> { shifted = !shifted; invalidate() }
-                    "LANG" -> { english = !english; invalidate() }
-                    "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
-                    "DELETE" -> if (!deleteRepeating) onKey("DELETE")
-                    "SPACE", "ENTER" -> onKey(key.value)
-                    else -> {
-                        onKey(if (shifted && !symbolMode) key.value.uppercase() else key.value.trim())
-                        if (shifted) { shifted = false; invalidate() }
-                    }
-                }
+                if (key?.value == "DELETE" && !deleteRepeating) onKey("DELETE")
                 deleteRepeating = false
+                downHandled = false
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -321,6 +395,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 pressedValue = null
                 pressedRect = null
                 deleteRepeating = false
+                downHandled = false
                 invalidate()
                 return true
             }
