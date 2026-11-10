@@ -53,12 +53,7 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
         if (spellCheckerSession != null) return
         try {
             val manager = getSystemService(TEXT_SERVICES_MANAGER_SERVICE) as TextServicesManager
-            spellCheckerSession = manager.newSpellCheckerSession(
-                null,
-                Locale("es", "MX"),
-                this,
-                false
-            )
+            spellCheckerSession = manager.newSpellCheckerSession(null, Locale("es", "MX"), this, false)
         } catch (_: Exception) {
             spellCheckerSession = null
         }
@@ -73,12 +68,12 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
         val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString() ?: return
         val match = Regex("([\\p{L}]{3,}) $").find(before) ?: return
         val word = match.groupValues[1]
-        if (word.any { it.isDigit() } || word.length > 30) return
+        if (word.length > 30) return
 
         pendingWord = word
         spellCheckPending = true
         try {
-            session.getSuggestions(TextInfo(word), 5, false)
+            session.getSuggestions(arrayOf(TextInfo(word)), 5, false)
         } catch (_: Exception) {
             spellCheckPending = false
             pendingWord = null
@@ -106,7 +101,6 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
         val ic = currentInputConnection ?: return
         val expectedSuffix = "$original "
         val actualSuffix = ic.getTextBeforeCursor(expectedSuffix.length, 0)?.toString()
-        // Only replace if the cursor is still immediately after the same word and space.
         if (actualSuffix == expectedSuffix) {
             ic.deleteSurroundingText(expectedSuffix.length, 0)
             ic.commitText("$replacement ", 1)
