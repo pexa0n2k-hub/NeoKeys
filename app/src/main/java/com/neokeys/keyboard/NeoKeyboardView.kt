@@ -26,6 +26,8 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private var pressedValue: String? = null
     private var pressedRect: RectF? = null
     private var deleteRepeating = false
+    private var toolsMode = false
+    private val toolTargets = mutableListOf<Pair<RectF, String>>()
 
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
@@ -195,6 +197,38 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         }
     }
 
+    private fun drawToolsPanel(canvas: Canvas, d: Float, theme: Theme) {
+        val items = listOf("⌨  Teclado" to "BACK", "🎨  Temas" to "THEMES", "✋  Una mano" to "ONE_HAND", "▣  Flotante" to "FLOAT", "⚙  Ajustes" to "SETTINGS")
+        val side=14*d; val gap=10*d; val top=12*d
+        val w=(width-2*side-gap)/2f; val h=((height-top-18*d)/3f).coerceAtLeast(52*d)
+        items.forEachIndexed { i,item ->
+            val col=i%2; val row=i/2
+            val r=RectF(side+col*(w+gap),top+row*(h+gap),side+col*(w+gap)+w,top+row*(h+gap)+h)
+            paint.style=Paint.Style.FILL;paint.color=theme.panel;paint.alpha=245;canvas.drawRoundRect(r,20*d,20*d,paint)
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=1.5f*d;paint.color=theme.accent;paint.alpha=180;canvas.drawRoundRect(r,20*d,20*d,paint)
+            paint.style=Paint.Style.FILL;paint.alpha=255;paint.color=theme.text;paint.textAlign=Paint.Align.CENTER;paint.textSize=14*d
+            canvas.drawText(item.first,r.centerX(),r.centerY()-(paint.ascent()+paint.descent())/2,paint)
+            toolTargets.add(r to item.second)
+        }
+    }
+
+    private fun selectTool(id: String?) {
+        when(id) {
+            "BACK" -> { toolsMode=false; invalidate() }
+            "THEMES","SETTINGS" -> { toolsMode=false; onKey("SETTINGS") }
+            "ONE_HAND" -> {
+                val p=context.getSharedPreferences("neokeys_settings",Context.MODE_PRIVATE)
+                p.edit().putBoolean("one_hand_enabled",!p.getBoolean("one_hand_enabled",false)).apply()
+                invalidate()
+            }
+            "FLOAT" -> {
+                val p=context.getSharedPreferences("neokeys_settings",Context.MODE_PRIVATE)
+                p.edit().putBoolean("floating_enabled",!p.getBoolean("floating_enabled",false)).apply()
+                invalidate()
+            }
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val d = resources.displayMetrics.density
@@ -210,11 +244,14 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         paint.alpha = 255
 
         keys.clear()
+        toolTargets.clear()
         val gap = 5*d
         val pad = 5*d
         val toolbarH = 34*d
         val contentTop = toolbarH
         val rowH = (height - toolbarH) / 5f
+
+        if (toolsMode) { drawToolsPanel(canvas, d, theme); return }
 
         // Barra de acceso rápido integrada en el teclado.
         val toolbarRect = RectF(pad, 3*d, width-pad, toolbarH-2*d)
@@ -224,9 +261,9 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         canvas.drawRoundRect(toolbarRect, 14*d, 14*d, paint)
         paint.alpha = 255
         val toolbarItems = listOf(
-            Triple("⚙", 0.16f, "SETTINGS"),
-            Triple("🎨", 0.16f, "SETTINGS"),
-            Triple("▦", 0.16f, "SETTINGS"),
+            Triple("☰", 0.16f, "TOOLS"),
+            Triple("▦", 0.16f, "TOOLS"),
+            Triple("🎨", 0.16f, "TOOLS"),
             Triple("🌐", 0.16f, "LANG"),
             Triple("⌫", 0.16f, "DELETE")
         )
@@ -354,6 +391,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
             "DELETE" -> onKey("DELETE")
             "SPACE", "ENTER" -> onKey(value)
+            "TOOLS" -> { toolsMode = true; invalidate() }
             "SETTINGS" -> onKey("SETTINGS")
             else -> {
                 onKey(if (shifted && !symbolMode) value.uppercase() else value.trim())
@@ -365,6 +403,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                if (toolsMode) { selectTool(toolTargets.firstOrNull { it.first.contains(event.x,event.y) }?.second); return true }
                 val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
                 pressedValue = key?.value
                 pressedRect = key?.rect?.let { RectF(it) }
@@ -379,6 +418,13 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 invalidate()
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                val i=event.actionIndex
+                val extra=keys.asReversed().firstOrNull { it.rect.contains(event.getX(i),event.getY(i)) }
+                if(extra!=null && extra.value!="DELETE") dispatchKey(extra.value)
+                return true
+            }
+            MotionEvent.ACTION_POINTER_UP -> return true
             MotionEvent.ACTION_UP -> {
                 val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
                 stopDeleteRepeat()
