@@ -4,16 +4,24 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.view.View
+import android.view.textservice.SpellCheckerSession
+import android.view.textservice.SuggestionsInfo
+import android.view.textservice.TextInfo
+import android.view.textservice.TextServicesManager
 import java.util.Locale
 
-class NeoKeyboardService : InputMethodService() {
+class NeoKeyboardService : InputMethodService(),
+    SpellCheckerSession.SpellCheckerSessionListener {
     private var keyboard: NeoKeyboardView? = null
+    private var spellSession: SpellCheckerSession? = null
+    private var pendingSpellWord: String? = null
     private val wordAtCursor = Regex("([\\p{L}]{1,40})$")
 
     override fun onCreateInputView(): View {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window?.window?.setDecorFitsSystemWindows(true)
         }
+        ensureSpellChecker()
         val view = NeoKeyboardView(this) { action ->
             when {
                 action == "SETTINGS" -> startActivity(
@@ -73,6 +81,46 @@ class NeoKeyboardService : InputMethodService() {
             if (word.isNullOrBlank()) emptyList()
             else SpanishWordPredictor.suggestions(word)
         )
+        if (!word.isNullOrBlank()) {
+            pendingSpellWord = word
+            try { spellSession?.getSuggestions(arrayOf(TextInfo(word)), 5, false) }
+            catch (_: Exception) { }
+        }
+    }
+
+    private fun ensureSpellChecker() {
+        if (spellSession != null) return
+        try {
+            val manager = getSystemService(TEXT_SERVICES_MANAGER_SERVICE) as TextServicesManager
+            spellSession = manager.newSpellCheckerSession(
+                null, Locale("es", "MX"), this, false
+            )
+        } catch (_: Exception) {
+            spellSession = null
+        }
+    }
+
+    override fun onGetSuggestions(results: Array<SuggestionsInfo>) {
+        val original = pendingSpellWord ?: return
+        if (results.isEmpty() || currentWord() != original) return
+        val info = results[0]
+        val looksLikeTypo = info.suggestionsAttributes and
+            SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO != 0
+        if (!looksLikeTypo || info.suggestionsCount <= 0) return
+        val alternatives = mutableListOf(original)
+        for (i in 0 until minOf(info.suggestionsCount, 5)) {
+            val candidate = info.getSuggestionAt(i) ?: continue
+            if (candidate.isNotBlank() && candidate.all { it.isLetter() }) {
+                alternatives.add(matchCase(original, candidate))
+            }
+        }
+        keyboard?.updateSuggestions(alternatives.distinct().take(3))
+    }
+
+    override fun onGetSentenceSuggestions(
+        results: Array<android.view.textservice.SentenceSuggestionsInfo>
+    ) {
+        // Sentence-level suggestions are not needed for this first iteration.
     }
 
     private fun applySuggestion(selected: String) {
@@ -81,7 +129,8 @@ class NeoKeyboardService : InputMethodService() {
         if (selected.isBlank() || selected.any { !it.isLetter() }) return
         ic.beginBatchEdit()
         ic.deleteSurroundingText(word.length, 0)
-        ic.commitText(matchCase(word, selected), 1)
+        // Selecting a suggestion accepts the word and immediately inserts a space.
+        ic.commitText(matchCase(word, selected) + " ", 1)
         ic.endBatchEdit()
         refreshSuggestions()
     }
@@ -92,6 +141,8 @@ class NeoKeyboardService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        spellSession?.close()
+        spellSession = null
         keyboard = null
         super.onDestroy()
     }

@@ -33,6 +33,30 @@ object SpanishWordPredictor {
         enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre
         uno dos tres cuatro cinco seis siete ocho nueve diez
         correcto correcta corrección corregir error errores
+        puedes puedo puede podemos podrían podría quiero quieres
+        estamos estaban estará estaré hacemos hacemos hecho hice
+        mensaje enviar enviaré enviado recibido recibiste recibieron
+        paquete paquetes entrega entregas entregué entregaste
+        dirección direcciones ubicación ubicaciónes referencia
+        información informacion importante importante urgente
+        necesito necesitamos necesitas necesita necesitar
+        problema problemas solución soluciones pregunta preguntas
+        respuesta respuestas atención servicio soporte sistema
+        aplicación aplicaciones funcionamiento funciona funcionando
+        gracias igualmente igualmente saludos excelente genial
+        también además entonces mientras porque aunque cuando
+        todavía aun aún quizá quizás tal vez probablemente
+        bonito bonita buenos buenas tardes noches días
+        estaba estabas estaban estamos estuvieron estuvimos
+        tengo tienes tiene tenemos tienen tendrán tendría
+        hago haces hace hacemos hacen hice hizo hicieron
+        digo dices dice decimos dicen dije dijo dijeron
+        voy vas va vamos van fui fue fueron iremos
+        casa casas coche carro automóvil auto computadora
+        celular teléfono pantalla teclado palabra palabras
+        escribir escribiendo escribiste escribo escribes escribe
+        rápido rápido rápidamente despacio correcto incorrecto
+        México mexicano mexicana español españolito
         dónde cómo cuándo cuál quién qué
         podrías podría podríamos gustaría gracias disculpa disculpe
         recibí recibido recibir confirmar confirmado confirmación
@@ -50,7 +74,33 @@ object SpanishWordPredictor {
         "tambien" to "también", "manana" to "mañana",
         "miercoles" to "miércoles", "sabado" to "sábado",
         "telefono" to "teléfono", "direccion" to "dirección",
-        "numero" to "número", "mexico" to "México"
+        "numero" to "número", "mexico" to "México",
+        "aver" to "a ver",
+        "aser" to "hacer", "aserlo" to "hacerlo",
+        "acer" to "hacer", "haci" to "así",
+        "asi" to "así", "aki" to "aquí", "aqui" to "aquí",
+        "ay" to "hay", "ahy" to "ahí", "ahi" to "ahí",
+        "buenosdias" to "buenos días", "buenastardes" to "buenas tardes",
+        "buenasnoches" to "buenas noches", "porfavor" to "por favor",
+        "xq" to "porque", "pq" to "porque", "porq" to "porque",
+        "dnd" to "dónde", "q" to "que", "ke" to "que",
+        "k" to "que", "ola" to "hola", "holaa" to "hola",
+        "holaaa" to "hola", "grasias" to "gracias", "grax" to "gracias",
+        "gracia" to "gracias", "gras" to "gracias",
+        "eskribir" to "escribir", "escribir" to "escribir",
+        "nesesito" to "necesito", "nececitas" to "necesitas",
+        "necesitoo" to "necesito", "trabajndo" to "trabajando",
+        "trabajandoo" to "trabajando", "paqeute" to "paquete",
+        "paquetez" to "paquetes", "entregaa" to "entrega",
+        "direcsion" to "dirección", "dirrecion" to "dirección",
+        "informasion" to "información", "infromacion" to "información",
+        "comunicacion" to "comunicación", "comunicazion" to "comunicación",
+        "tambien" to "también", "mas" to "más", "despues" to "después",
+        "dia" to "día", "dias" to "días", "facil" to "fácil",
+        "rapido" to "rápido", "ultimamente" to "últimamente",
+        "atencion" to "atención", "solucion" to "solución",
+        "corazon" to "corazón", "cancion" to "canción",
+        "miercoles" to "miércoles", "sabado" to "sábado"
     )
 
     private fun normalized(value: String): String = Normalizer
