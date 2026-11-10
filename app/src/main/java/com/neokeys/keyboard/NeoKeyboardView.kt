@@ -203,7 +203,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     "SHIFT" -> { shifted = !shifted; invalidate() }
                     "LANG" -> { english = !english; invalidate() }
                     "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
-                    "DELETE" -> if (!deleteRepeating && !wasDelete) onKey("DELETE")
+                    "DELETE" -> if (!deleteRepeating) onKey("DELETE")
                     "SPACE", "ENTER" -> onKey(key.value)
                     else -> {
                         onKey(if (shifted && !symbolMode) key.value.uppercase() else key.value.trim())
