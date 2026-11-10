@@ -13,7 +13,7 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE) }
     private lateinit var status: TextView
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
-    private fun label(s:String,size:Float,color:Int=0xFFF3F6FF.toInt())=TextView(this).apply{text=s.let{ text=it };textSize=size;setTextColor(color)}
+    private fun label(s:String,size:Float,color:Int=0xFFF3F6FF.toInt())=TextView(this).apply{text=s;textSize=size;setTextColor(color)}
     private fun card(title:String,subtitle:String):LinearLayout {
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(16),dp(18),dp(16));background=android.graphics.drawable.GradientDrawable().apply{setColor(0xFF151D30.toInt());cornerRadius=dp(22).toFloat();setStroke(dp(1),0xFF354967.toInt())}}
         box.addView(label(title,18f));box.addView(label(subtitle,12f,0xFF9FB2D1.toInt()).apply{setPadding(0,dp(5),0,dp(8))});return box
