@@ -37,11 +37,16 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
 
     private fun currentTheme(): Theme {
         val prefs = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
-        val base = when (prefs.getString("theme", "ocean")) {
-            "midnight" -> Theme(0xFF080B12.toInt(), 0xFF111827.toInt(), 0xFF273449.toInt(), 0xFF39465D.toInt(), 0xFF9BB7FF.toInt(), 0xFFF3F6FF.toInt())
-            "rose" -> Theme(0xFF180F19.toInt(), 0xFF2A1829.toInt(), 0xFF56334F.toInt(), 0xFF75415F.toInt(), 0xFFFFA6D5.toInt(), 0xFFFFF1F8.toInt())
-            "emerald" -> Theme(0xFF081713.toInt(), 0xFF102820.toInt(), 0xFF245342.toInt(), 0xFF326B55.toInt(), 0xFF8AF0C2.toInt(), 0xFFEFFFF7.toInt())
-            else -> Theme(0xFF101722.toInt(), 0xFF182435.toInt(), 0xCC526984.toInt(), 0xFF34465E.toInt(), 0xFF8FD7FF.toInt(), 0xFFF3F7FF.toInt())
+        val base = when (prefs.getString("theme", "violet")) {
+            "violet" -> Theme(0xFF10091D.toInt(), 0xCC25133F.toInt(), 0xCC572B91.toInt(), 0xFF713BC0.toInt(), 0xFFB45CFF.toInt(), 0xFFFFFFFF.toInt())
+            "cyber" -> Theme(0xFF050D18.toInt(), 0xCC0B1C2B.toInt(), 0xCC123C55.toInt(), 0xFF174E68.toInt(), 0xFF32E8FF.toInt(), 0xFFF5FFFF.toInt())
+            "ivory" -> Theme(0xFFF0EAE0.toInt(), 0xFFE6DED2.toInt(), 0xFFF9F5ED.toInt(), 0xFFD9C2A5.toInt(), 0xFFB88B5B.toInt(), 0xFF24211D.toInt())
+            "emerald" -> Theme(0xFF061812.toInt(), 0xCC0B2B20.toInt(), 0xCC12634B.toInt(), 0xFF087B61.toInt(), 0xFF35E6B0.toInt(), 0xFFEFFFF7.toInt())
+            "crimson" -> Theme(0xFF160609.toInt(), 0xCC2B0B10.toInt(), 0xCC5A111B.toInt(), 0xFF8A1725.toInt(), 0xFFFF3B4E.toInt(), 0xFFFFF4F4.toInt())
+            "sakura" -> Theme(0xFF2A1427.toInt(), 0xCCF4C8E7.toInt(), 0xCCF7D9EE.toInt(), 0xFFEBA9D5.toInt(), 0xFFE66BC2.toInt(), 0xFF512A49.toInt())
+            "holographic" -> Theme(0xFF06112B.toInt(), 0xCC102B70.toInt(), 0xCC1259B8.toInt(), 0xFF244ED0.toInt(), 0xFF31D8FF.toInt(), 0xFFFFFFFF.toInt())
+            "titanium" -> Theme(0xFF080B10.toInt(), 0xCC1B222D.toInt(), 0xCC414B5A.toInt(), 0xFF596577.toInt(), 0xFFBFC9D8.toInt(), 0xFFF5F7FA.toInt())
+            else -> Theme(0xFF10091D.toInt(), 0xCC25133F.toInt(), 0xCC572B91.toInt(), 0xFF713BC0.toInt(), 0xFFB45CFF.toInt(), 0xFFFFFFFF.toInt())
         }
         return base.copy(accent = prefs.getInt("accent_color", base.accent))
     }
@@ -130,6 +135,34 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         paint.alpha = 255
     }
 
+    private val keyShape: String
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getString("key_shape", "rounded") ?: "rounded"
+    private val pressEffect: String
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getString("press_effect", "glow") ?: "glow"
+
+    private fun drawKey(canvas: Canvas, rect: RectF, radius: Float) {
+        val path = android.graphics.Path()
+        when (keyShape) {
+            "square" -> canvas.drawRect(rect, paint)
+            "pill" -> canvas.drawRoundRect(rect, rect.height()/2f, rect.height()/2f, paint)
+            "super" -> canvas.drawRoundRect(rect, radius*2.2f, radius*2.2f, paint)
+            "hexagon" -> {
+                val cut = rect.width()*0.16f
+                path.moveTo(rect.left+cut, rect.top); path.lineTo(rect.right-cut, rect.top)
+                path.lineTo(rect.right, rect.centerY()); path.lineTo(rect.right-cut, rect.bottom)
+                path.lineTo(rect.left+cut, rect.bottom); path.lineTo(rect.left, rect.centerY())
+                path.close(); canvas.drawPath(path, paint)
+            }
+            "diagonal", "gamer" -> {
+                val cut = if (keyShape == "gamer") rect.width()*0.12f else rect.width()*0.07f
+                path.moveTo(rect.left+cut, rect.top); path.lineTo(rect.right, rect.top)
+                path.lineTo(rect.right-cut, rect.bottom); path.lineTo(rect.left, rect.bottom)
+                path.close(); canvas.drawPath(path, paint)
+            }
+            else -> canvas.drawRoundRect(rect, if (keyShape == "neon") radius*1.5f else radius, if (keyShape == "neon") radius*1.5f else radius, paint)
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val d = resources.displayMetrics.density
@@ -170,13 +203,28 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     else -> theme.key
                 }
                 paint.alpha = if (isPressed) 255 else opacity
-                canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+                drawKey(canvas, rect, 9*d)
                 paint.alpha = 255
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = (1f + glassIntensity / 100f)*d
                 paint.color = theme.accent
                 paint.alpha = if (isPressed) 230 else 35 + glassIntensity
-                canvas.drawRoundRect(RectF(rect.left+d, rect.top+d, rect.right-d, rect.bottom-d), 9*d, 9*d, paint)
+                drawKey(canvas, RectF(rect.left+d, rect.top+d, rect.right-d, rect.bottom-d), 9*d)
+                if (isPressed) {
+                    paint.style = Paint.Style.STROKE
+                    paint.color = theme.accent
+                    paint.strokeWidth = 2.5f*d
+                    paint.alpha = 220
+                    when (pressEffect) {
+                        "pulse" -> canvas.drawRoundRect(RectF(rect.left-2*d, rect.top-2*d, rect.right+2*d, rect.bottom+2*d), 11*d, 11*d, paint)
+                        "wave" -> canvas.drawCircle(rect.centerX(), rect.centerY(), rect.height()*0.42f, paint)
+                        "expand" -> canvas.drawRoundRect(RectF(rect.left-4*d, rect.top-4*d, rect.right+4*d, rect.bottom+4*d), 13*d, 13*d, paint)
+                        else -> {
+                            paint.strokeWidth = 4*d
+                            canvas.drawRoundRect(rect, 10*d, 10*d, paint)
+                        }
+                    }
+                }
                 paint.style = Paint.Style.FILL
                 paint.alpha = 255
                 paint.color = theme.text
@@ -212,13 +260,13 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 else -> theme.special
             }
             paint.alpha = if (isPressed) 255 else opacity
-            canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+            drawKey(canvas, rect, 9*d)
             paint.alpha = 255
             if (isPressed) {
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 2*d
                 paint.color = theme.accent
-                canvas.drawRoundRect(rect, 9*d, 9*d, paint)
+                drawKey(canvas, rect, 9*d)
                 paint.style = Paint.Style.FILL
             }
             paint.color = theme.text
