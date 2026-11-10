@@ -413,7 +413,9 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
     private fun stopDeleteRepeat() { handler.removeCallbacks(deleteRepeat) }
 
-    private var downHandled = false
+    private var activePointerId = MotionEvent.INVALID_POINTER_ID
+    private var activeKeyValue: String? = null
+    private var activeKeyWasDelete = false
 
     private fun dispatchKey(value: String) {
         when (value) {
@@ -435,51 +437,91 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (toolsMode) { selectTool(toolTargets.firstOrNull { it.first.contains(event.x,event.y) }?.second); return true }
-                val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
+                activePointerId = event.getPointerId(0)
+                if (toolsMode) {
+                    selectTool(toolTargets.firstOrNull { it.first.contains(event.x, event.y) }?.second)
+                    activePointerId = MotionEvent.INVALID_POINTER_ID
+                    return true
+                }
+
+                val key = keys.asReversed().firstOrNull {
+                    it.rect.contains(event.getX(0), event.getY(0))
+                }
+                activeKeyValue = key?.value
+                activeKeyWasDelete = key?.value == "DELETE"
                 pressedValue = key?.value
                 pressedRect = key?.rect?.let { RectF(it) }
-                if (key != null && hapticsEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                downHandled = false
-                if (key?.value == "DELETE") {
+
+                if (key != null && hapticsEnabled) {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+
+                // Dispatch exactly once on DOWN. Extra fingers are deliberately ignored:
+                // they must not inject unintended characters during fast thumb typing.
+                if (activeKeyWasDelete) {
                     startDeleteRepeat()
                 } else if (key != null) {
                     dispatchKey(key.value)
-                    downHandled = true
                 }
                 invalidate()
                 return true
             }
+
             MotionEvent.ACTION_POINTER_DOWN -> {
-                val i=event.actionIndex
-                val extra=keys.asReversed().firstOrNull { it.rect.contains(event.getX(i),event.getY(i)) }
-                if(extra!=null && extra.value!="DELETE") dispatchKey(extra.value)
+                // Keep one active pointer. Multi-touch noise must not create extra letters.
                 return true
             }
-            MotionEvent.ACTION_POINTER_UP -> return true
+
+            MotionEvent.ACTION_POINTER_UP -> {
+                val liftedId = event.getPointerId(event.actionIndex)
+                if (liftedId == activePointerId) {
+                    stopDeleteRepeat()
+                    activePointerId = MotionEvent.INVALID_POINTER_ID
+                    activeKeyValue = null
+                    activeKeyWasDelete = false
+                    pressedValue = null
+                    pressedRect = null
+                    deleteRepeating = false
+                    invalidate()
+                }
+                return true
+            }
+
             MotionEvent.ACTION_UP -> {
-                val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
-                stopDeleteRepeat()
-                pressedValue = null
-                pressedRect = null
-                invalidate()
-                if (key?.value == "DELETE" && !deleteRepeating) onKey("DELETE")
-                deleteRepeating = false
-                downHandled = false
+                if (activePointerId != MotionEvent.INVALID_POINTER_ID) {
+                    stopDeleteRepeat()
+                    if (activeKeyWasDelete && !deleteRepeating) onKey("DELETE")
+                    activePointerId = MotionEvent.INVALID_POINTER_ID
+                    activeKeyValue = null
+                    activeKeyWasDelete = false
+                    pressedValue = null
+                    pressedRect = null
+                    deleteRepeating = false
+                    invalidate()
+                    performClick()
+                }
                 return true
             }
+
             MotionEvent.ACTION_CANCEL -> {
                 stopDeleteRepeat()
+                activePointerId = MotionEvent.INVALID_POINTER_ID
+                activeKeyValue = null
+                activeKeyWasDelete = false
                 pressedValue = null
                 pressedRect = null
                 deleteRepeating = false
-                downHandled = false
                 invalidate()
                 return true
             }
         }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
         return true
     }
 
