@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 
@@ -12,6 +13,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private var english = false
     private var shifted = false
     private var symbolMode = false
+    private var pressedKey: Key? = null
 
     private data class Key(val label: String, val value: String, val rect: RectF)
     private val keys = mutableListOf<Key>()
@@ -26,29 +28,27 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         listOf("a","s","d","f","g","h","j","k","l"),
         listOf("⇧","z","x","c","v","b","n","m","⌫")
     )
-
-    // Teclas del panel de números y caracteres especiales.
     private val symbolRows = listOf(
         listOf("@","#","$","%","&","-","+","(",")","/"),
-        listOf("*","\"","' ",":",";","!","?","¿","¡","_"),
+        listOf("*","\"","'",":",";","!","?","¿","¡","_"),
         listOf("⇧","=","[","]","{","}","\\","~","⌫")
     )
-
     private val numbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
-    fun toggleLanguage() {
-        english = !english
-        invalidate()
-    }
+    private val keyboardHeightDp: Int
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
+            .getInt("keyboard_height_dp", 278)
 
-    fun toggleShift() {
-        shifted = !shifted
-        invalidate()
-    }
+    private val hapticsEnabled: Boolean
+        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
+            .getBoolean("haptics_enabled", true)
+
+    fun toggleLanguage() { english = !english; invalidate() }
+    fun toggleShift() { shifted = !shifted; invalidate() }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
-        val desired = (resources.displayMetrics.density * 278).toInt()
+        val desired = (resources.displayMetrics.density * keyboardHeightDp).toInt()
         setMeasuredDimension(w, resolveSize(desired, heightMeasureSpec))
     }
 
@@ -77,15 +77,15 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     "↵" -> "ENTER"
                     else -> label
                 }
-                keys.add(Key(label, value, rect))
+                val key = Key(label, value, rect)
+                keys.add(key)
 
-                paint.color = if (label in listOf("⇧","⌫","↵")) {
-                    0xFF34465E.toInt()
-                } else {
-                    0xCC526984.toInt()
+                paint.color = when {
+                    pressedKey === key -> 0xFF6687A8.toInt()
+                    label in listOf("⇧","⌫","↵") -> 0xFF34465E.toInt()
+                    else -> 0xCC526984.toInt()
                 }
                 canvas.drawRoundRect(rect, 9*d, 9*d, paint)
-
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 1*d
                 paint.color = 0x668FD7FF
@@ -97,17 +97,9 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                 paint.color = 0xFFF3F7FF.toInt()
                 paint.textAlign = Paint.Align.CENTER
                 paint.textSize = if (label.length > 3) 12*d else 18*d
-                val shown = if (shifted && label.length == 1 && !symbolMode) {
-                    label.uppercase()
-                } else {
-                    label
-                }
-                canvas.drawText(
-                    shown,
-                    rect.centerX(),
-                    rect.centerY() - (paint.ascent()+paint.descent())/2,
-                    paint
-                )
+                val shown = if (shifted && label.length == 1 && !symbolMode) label.uppercase() else label
+                canvas.drawText(shown, rect.centerX(),
+                    rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
             }
         }
 
@@ -123,64 +115,63 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         val bottomH = rowH - 7*d
         val modeLabel = if (symbolMode) "ABC" else "?123"
         val specs = listOf(
-            Triple(modeLabel, 0.15f, "MODE"),
-            Triple("🌐", 0.11f, "LANG"),
-            Triple(",", 0.08f, ","),
-            Triple("space", 0.40f, "SPACE"),
-            Triple(".", 0.08f, "."),
-            Triple("↵", 0.15f, "ENTER")
+            Triple(modeLabel, 0.15f, "MODE"), Triple("🌐", 0.11f, "LANG"),
+            Triple(",", 0.08f, ","), Triple("space", 0.40f, "SPACE"),
+            Triple(".", 0.08f, "."), Triple("↵", 0.15f, "ENTER")
         )
         val usable = width - 2*pad - gap*(specs.size-1)
         var x = pad
         specs.forEach { (label, fraction, value) ->
             val rectW = usable*fraction
             val rect = RectF(x, bottomY, x+rectW, bottomY+bottomH)
-            keys.add(Key(label, value, rect))
-            paint.color = if (value == "SPACE") 0xCC526984.toInt() else 0xFF34465E.toInt()
+            val key = Key(label, value, rect)
+            keys.add(key)
+            paint.color = when {
+                pressedKey === key -> 0xFF6687A8.toInt()
+                value == "SPACE" -> 0xCC526984.toInt()
+                else -> 0xFF34465E.toInt()
+            }
             canvas.drawRoundRect(rect, 9*d, 9*d, paint)
             paint.color = 0xFFF3F7FF.toInt()
             paint.textAlign = Paint.Align.CENTER
             paint.textSize = if (label == "space") 11*d else 16*d
-            val shown = if (label == "space") {
-                if (english) "English" else "Español"
-            } else {
-                label
-            }
-            canvas.drawText(
-                shown,
-                rect.centerX(),
-                rect.centerY() - (paint.ascent()+paint.descent())/2,
-                paint
-            )
+            val shown = if (label == "space") { if (english) "English" else "Español" } else label
+            canvas.drawText(shown, rect.centerX(),
+                rect.centerY() - (paint.ascent()+paint.descent())/2, paint)
             x += rectW + gap
         }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP) {
-            val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
-            if (key != null) when (key.value) {
-                "SHIFT" -> {
-                    shifted = !shifted
-                    invalidate()
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                pressedKey = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
+                if (pressedKey != null && hapticsEnabled) {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 }
-                "LANG" -> {
-                    english = !english
-                    invalidate()
-                }
-                "MODE" -> {
-                    symbolMode = !symbolMode
-                    shifted = false
-                    invalidate()
-                }
-                "SPACE", "DELETE", "ENTER" -> onKey(key.value)
-                else -> {
-                    onKey(if (shifted && !symbolMode) key.value.uppercase() else key.value.trim())
-                    if (shifted) {
-                        shifted = false
-                        invalidate()
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                val key = keys.asReversed().firstOrNull { it.rect.contains(event.x, event.y) }
+                pressedKey = null
+                invalidate()
+                if (key != null) when (key.value) {
+                    "SHIFT" -> { shifted = !shifted; invalidate() }
+                    "LANG" -> { english = !english; invalidate() }
+                    "MODE" -> { symbolMode = !symbolMode; shifted = false; invalidate() }
+                    "SPACE", "DELETE", "ENTER" -> onKey(key.value)
+                    else -> {
+                        onKey(if (shifted && !symbolMode) key.value.uppercase() else key.value.trim())
+                        if (shifted) { shifted = false; invalidate() }
                     }
                 }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedKey = null
+                invalidate()
+                return true
             }
         }
         return true
