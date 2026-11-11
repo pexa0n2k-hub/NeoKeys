@@ -3,6 +3,9 @@ package com.neokeys.keyboard
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
@@ -36,12 +39,21 @@ class MainActivity : Activity() {
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(28),dp(20),dp(32));setBackgroundColor(0xFF0B1020.toInt())}
         val scroll=ScrollView(this).apply{addView(root)}
         root.addView(label("NeoKeys",36f))
-        root.addView(label("PREMIUM STUDIO • V2.1",12f,0xFF6F7DFF.toInt()).apply{setPadding(0,dp(4),0,dp(18))})
+        root.addView(label("PREMIUM STUDIO • V2.3",12f,0xFF6F7DFF.toInt()).apply{setPadding(0,dp(4),0,dp(18))})
         val hero=card("Tu teclado. Tu identidad.","Un centro de control para personalizar tu experiencia.")
         hero.addView(button("ACTIVAR NEOKEYS"){startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))})
         hero.addView(button("ELEGIR TECLADO"){(getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()})
         root.addView(hero,margin())
         status=label("Tus preferencias se guardan en este dispositivo.",12f,0xFF8FBDDB.toInt());root.addView(status)
+
+        val voice = card("Dictado por voz", "Habla en español y NeoKeys escribirá el texto en la aplicación activa.")
+        voice.addView(button(if (Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) "MICRÓFONO PERMITIDO" else "PERMITIR MICRÓFONO") {
+            if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 202)
+            } else status.text = "Permiso de micrófono disponible. Abre NeoKeys y toca el micrófono."
+        })
+        voice.addView(label("El reconocimiento depende del servicio de voz instalado en Android y puede requerir conexión a internet.",11f,0xFF9FB2D1.toInt()))
+        root.addView(voice,margin())
 
         val writing=card("Escritura inteligente","Autocorrección en español (México)")
         val autocorrectButton = button("") { }
@@ -82,6 +94,15 @@ class MainActivity : Activity() {
         root.addView(label("NEOKEYS • ESCRIBE A TU MANERA",10f,0xFF7185A8.toInt()))
         setContentView(scroll)
     }
+    override fun onRequestPermissionsResult(requestCode:Int, permissions:Array<out String>, grantResults:IntArray) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if (requestCode == 202) {
+            status.text = if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                "Micrófono permitido. Ya puedes usar el dictado en NeoKeys."
+            else "Permiso denegado. Puedes habilitarlo desde Ajustes de Android."
+        }
+    }
+
     @Deprecated("Compatibility")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==101&&resultCode==RESULT_OK){data?.data?.let{uri->contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);prefs.edit().putString("background_uri",uri.toString()).apply();status.text="Fondo actualizado"}}}
 }

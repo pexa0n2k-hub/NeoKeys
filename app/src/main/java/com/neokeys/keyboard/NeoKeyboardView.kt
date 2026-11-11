@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 
 class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : View(context) {
+    private val prefs = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val handler = Handler(Looper.getMainLooper())
@@ -29,10 +30,16 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     private var toolsMode = false
     private val toolTargets = mutableListOf<Pair<RectF, String>>()
     private var suggestions: List<String> = emptyList()
+    private var voiceListening = false
+    private var drawAccent: Int = 0xFFB45CFF.toInt()
 
     fun updateSuggestions(words: List<String>) {
-        suggestions = words.take(3)
-        invalidate()
+        val next = words.take(3)
+        if (suggestions != next) { suggestions = next; invalidate() }
+    }
+
+    fun setVoiceListening(listening: Boolean) {
+        if (voiceListening != listening) { voiceListening = listening; invalidate() }
     }
 
     private data class Key(val label: String, val value: String, val rect: RectF)
@@ -44,7 +51,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     )
 
     private fun currentTheme(): Theme {
-        val prefs = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
+        val prefs = this.prefs
         val base = when (prefs.getString("theme", "violet")) {
             "violet" -> Theme(0xFF10091D.toInt(), 0xCC25133F.toInt(), 0xCC572B91.toInt(), 0xFF713BC0.toInt(), 0xFFB45CFF.toInt(), 0xFFFFFFFF.toInt())
             "cyber" -> Theme(0xFF050D18.toInt(), 0xCC0B1C2B.toInt(), 0xCC123C55.toInt(), 0xFF174E68.toInt(), 0xFF32E8FF.toInt(), 0xFFF5FFFF.toInt())
@@ -60,13 +67,13 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
 
     private val keyboardHeightDp: Int
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getInt("keyboard_height_dp", 278)
+        get() = prefs.getInt("keyboard_height_dp", 278)
     private val hapticsEnabled: Boolean
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getBoolean("haptics_enabled", true)
+        get() = prefs.getBoolean("haptics_enabled", true)
     private val keyOpacity: Int
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getInt("key_opacity", 90).coerceIn(40, 100)
+        get() = prefs.getInt("key_opacity", 90).coerceIn(40, 100)
     private val glassIntensity: Int
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getInt("glass_intensity", 70).coerceIn(0, 100)
+        get() = prefs.getInt("glass_intensity", 70).coerceIn(0, 100)
 
     private val rowsEs = listOf(
         listOf("q","w","e","r","t","y","u","i","o","p"),
@@ -106,7 +113,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
 
     private fun loadBackground(): Bitmap? {
-        val prefs = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE)
+        val prefs = this.prefs
         val uriString = prefs.getString("keyboard_background_uri", null)
         if (uriString != loadedBackgroundUri) {
             backgroundBitmap = null
@@ -144,12 +151,12 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
     }
 
     private val keyShape: String
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getString("key_shape", "rounded") ?: "rounded"
+        get() = prefs.getString("key_shape", "rounded") ?: "rounded"
     private val pressEffect: String
-        get() = context.getSharedPreferences("neokeys_settings", Context.MODE_PRIVATE).getString("press_effect", "glow") ?: "glow"
+        get() = prefs.getString("press_effect", "glow") ?: "glow"
 
     private fun drawPremiumKey(canvas: Canvas, rect: RectF, radius: Float, baseColor: Int, pressed: Boolean) {
-        val top = if (pressed) currentTheme().accent else lighten(baseColor, 0.22f)
+        val top = if (pressed) drawAccent else lighten(baseColor, 0.22f)
         val bottom = darken(baseColor, 0.18f)
         paint.shader = android.graphics.LinearGradient(
             rect.left, rect.top, rect.left, rect.bottom, top, bottom,
@@ -239,6 +246,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         super.onDraw(canvas)
         val d = resources.displayMetrics.density
         val theme = currentTheme()
+        drawAccent = theme.accent
         val opacity = (keyOpacity * 255 / 100).coerceIn(0, 255)
 
         canvas.drawColor(theme.background)
@@ -268,6 +276,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         paint.alpha = 255
         // Three live suggestions; the menu remains accessible at the left.
         val menuWidth = 43*d
+        val micWidth = 42*d
         val menuRect = RectF(toolbarRect.left, toolbarRect.top,
             toolbarRect.left+menuWidth, toolbarRect.bottom)
         keys.add(Key("☰", "TOOLS", menuRect))
@@ -277,13 +286,20 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
         canvas.drawText("☰", menuRect.centerX(),
             menuRect.centerY()-(paint.ascent()+paint.descent())/2, paint)
 
+        val micRect = RectF(menuRect.right, toolbarRect.top, menuRect.right+micWidth, toolbarRect.bottom)
+        keys.add(Key(if (voiceListening) "●" else "🎙", "VOICE", micRect))
+        paint.color = if (voiceListening) theme.accent else theme.text
+        paint.textSize = 18*d
+        canvas.drawText(if (voiceListening) "●" else "🎙", micRect.centerX(),
+            micRect.centerY()-(paint.ascent()+paint.descent())/2, paint)
+
         val words = if (symbolMode) emptyList() else suggestions
         if (words.isEmpty()) {
-            val items = listOf("▦" to "TOOLS", "🎨" to "TOOLS", "🌐" to "LANG")
-            val slot = (toolbarRect.right-menuRect.right)/items.size
+            val items = listOf("▦" to "TOOLS", "🌐" to "LANG")
+            val slot = (toolbarRect.right-micRect.right)/items.size
             items.forEachIndexed { i, pair ->
-                val rect = RectF(menuRect.right+i*slot,toolbarRect.top,
-                    menuRect.right+(i+1)*slot,toolbarRect.bottom)
+                val rect = RectF(micRect.right+i*slot,toolbarRect.top,
+                    micRect.right+(i+1)*slot,toolbarRect.bottom)
                 keys.add(Key(pair.first,pair.second,rect))
                 paint.color=theme.text
                 paint.textSize=17*d
@@ -291,10 +307,10 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
                     rect.centerY()-(paint.ascent()+paint.descent())/2,paint)
             }
         } else {
-            val slot = (toolbarRect.right-menuRect.right)/3f
+            val slot = (toolbarRect.right-micRect.right)/3f
             words.forEachIndexed { i, word ->
-                val rect = RectF(menuRect.right+i*slot,toolbarRect.top,
-                    menuRect.right+(i+1)*slot,toolbarRect.bottom)
+                val rect = RectF(micRect.right+i*slot,toolbarRect.top,
+                    micRect.right+(i+1)*slot,toolbarRect.bottom)
                 keys.add(Key(word,"SUGGEST:"+word,rect))
                 paint.color = if (i == 1) theme.accent else theme.text
                 paint.textSize = if (word.length > 12) 12*d else 15*d
@@ -426,6 +442,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             "SPACE", "ENTER" -> onKey(value)
             "TOOLS" -> { toolsMode = true; invalidate() }
             "SETTINGS" -> onKey("SETTINGS")
+            "VOICE" -> onKey("VOICE")
             else -> {
                 if (value.startsWith("SUGGEST:")) onKey(value)
                 else {
