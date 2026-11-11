@@ -11,6 +11,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.view.textservice.SpellCheckerSession
 import android.view.textservice.SuggestionsInfo
 import android.view.textservice.TextInfo
@@ -48,7 +49,7 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
                             } else ic.commitText(" ", 1)
                             refreshSuggestions(requestSpellCheck = true)
                         }
-                        "ENTER" -> ic.commitText("\n", 1)
+                        "ENTER" -> performEditorActionOrNewline()
                         "LANG" -> viewLanguage()
                         "SHIFT" -> keyboard?.toggleShift()
                         else -> ic.commitText(action, 1)
@@ -60,6 +61,32 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
         keyboard = view
         refreshSuggestions()
         return view
+    }
+
+
+    /**
+     * Executes the action requested by the focused app (Search, Go, Send,
+     * Next, Done, etc.). If the field is a normal multiline editor, inserts
+     * a line break instead.
+     */
+    private fun performEditorActionOrNewline() {
+        val ic = currentInputConnection ?: return
+        val action = (currentInputEditorInfo?.imeOptions ?: EditorInfo.IME_ACTION_NONE) and
+            EditorInfo.IME_MASK_ACTION
+
+        val handled = when (action) {
+            EditorInfo.IME_ACTION_SEARCH,
+            EditorInfo.IME_ACTION_GO,
+            EditorInfo.IME_ACTION_SEND,
+            EditorInfo.IME_ACTION_NEXT,
+            EditorInfo.IME_ACTION_DONE,
+            EditorInfo.IME_ACTION_PREVIOUS -> ic.performEditorAction(action)
+            else -> false
+        }
+
+        if (!handled) {
+            ic.commitText("\\n", 1)
+        }
     }
 
     private fun viewLanguage() { keyboard?.toggleLanguage(); keyboard?.updateSuggestions(emptyList()) }
