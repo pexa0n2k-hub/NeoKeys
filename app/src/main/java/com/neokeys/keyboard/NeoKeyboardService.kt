@@ -85,7 +85,7 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
         }
 
         if (!handled) {
-            ic.commitText("\\n", 1)
+            ic.commitText("\n", 1)
         }
     }
 
