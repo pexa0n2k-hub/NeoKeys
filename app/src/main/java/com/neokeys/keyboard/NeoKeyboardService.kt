@@ -73,27 +73,33 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
     private fun performEditorActionOrNewline() {
         val ic = currentInputConnection ?: return
         val editorInfo = currentInputEditorInfo
-        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
-        val isMultiLine = (inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
-
-        // Multiline editors receive a text newline, not an IME action or
-        // synthetic hardware ENTER event that can dismiss the keyboard.
-        if (isMultiLine) {
-            ic.commitText("\n", 1)
-            return
-        }
-
-        val action = (editorInfo?.imeOptions ?: EditorInfo.IME_ACTION_NONE) and
+        val action = (editorInfo?.imeOptions ?: EditorInfo.IME_ACTION_UNSPECIFIED) and
             EditorInfo.IME_MASK_ACTION
 
+        // Give an explicit app action priority over the multiline flag.
+        // Some search fields (Google, YouTube, Play Store) can also advertise
+        // multiline input, but ENTER must still execute Search/Go.
         when (action) {
             EditorInfo.IME_ACTION_SEARCH,
             EditorInfo.IME_ACTION_GO,
             EditorInfo.IME_ACTION_SEND,
             EditorInfo.IME_ACTION_NEXT,
             EditorInfo.IME_ACTION_DONE,
-            EditorInfo.IME_ACTION_PREVIOUS -> ic.performEditorAction(action)
-            else -> ic.commitText("\n", 1)
+            EditorInfo.IME_ACTION_PREVIOUS -> {
+                ic.performEditorAction(action)
+                return
+            }
+        }
+
+        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
+        val isMultiLine = (inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+
+        // No explicit IME action: preserve newline behavior in multiline editors.
+        if (isMultiLine) {
+            ic.commitText("\n", 1)
+        } else {
+            // Fallback for ordinary text fields without an advertised action.
+            ic.commitText("\n", 1)
         }
     }
 
