@@ -11,7 +11,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.View
-import android.view.KeyEvent
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.textservice.SpellCheckerSession
 import android.view.textservice.SuggestionsInfo
@@ -72,23 +72,28 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
      */
     private fun performEditorActionOrNewline() {
         val ic = currentInputConnection ?: return
-        val action = (currentInputEditorInfo?.imeOptions ?: EditorInfo.IME_ACTION_NONE) and
+        val editorInfo = currentInputEditorInfo
+        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
+        val isMultiLine = (inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+
+        // Multiline editors receive a text newline, not an IME action or
+        // synthetic hardware ENTER event that can dismiss the keyboard.
+        if (isMultiLine) {
+            ic.commitText("\n", 1)
+            return
+        }
+
+        val action = (editorInfo?.imeOptions ?: EditorInfo.IME_ACTION_NONE) and
             EditorInfo.IME_MASK_ACTION
 
-        val handled = when (action) {
+        when (action) {
             EditorInfo.IME_ACTION_SEARCH,
             EditorInfo.IME_ACTION_GO,
             EditorInfo.IME_ACTION_SEND,
             EditorInfo.IME_ACTION_NEXT,
             EditorInfo.IME_ACTION_DONE,
             EditorInfo.IME_ACTION_PREVIOUS -> ic.performEditorAction(action)
-            else -> false
-        }
-
-        if (!handled) {
-            // Multiline editors expect an actual Enter key event, not committed text.
-            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            else -> ic.commitText("\n", 1)
         }
     }
 
