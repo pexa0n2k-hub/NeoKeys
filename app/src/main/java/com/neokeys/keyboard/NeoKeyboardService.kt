@@ -73,12 +73,26 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
     private fun performEditorActionOrNewline() {
         val ic = currentInputConnection ?: return
         val editorInfo = currentInputEditorInfo
+        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
+        val isMultiLine = (inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+        val packageName = editorInfo?.packageName.orEmpty()
+
+        // Chat composers in these apps should insert a line break when the
+        // focused field is explicitly multiline, instead of triggering an
+        // IME SEND/DONE action that can dismiss the keyboard.
+        val isChatApp = packageName == "com.whatsapp" ||
+            packageName == "com.facebook.katana" ||
+            packageName == "com.facebook.orca"
+
+        if (isChatApp && isMultiLine) {
+            ic.commitText("\n", 1)
+            return
+        }
+
+        // For search and other apps, honor the explicit action first.
         val action = (editorInfo?.imeOptions ?: EditorInfo.IME_ACTION_UNSPECIFIED) and
             EditorInfo.IME_MASK_ACTION
 
-        // Give an explicit app action priority over the multiline flag.
-        // Some search fields (Google, YouTube, Play Store) can also advertise
-        // multiline input, but ENTER must still execute Search/Go.
         when (action) {
             EditorInfo.IME_ACTION_SEARCH,
             EditorInfo.IME_ACTION_GO,
@@ -91,14 +105,10 @@ class NeoKeyboardService : InputMethodService(), SpellCheckerSession.SpellChecke
             }
         }
 
-        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
-        val isMultiLine = (inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
-
-        // No explicit IME action: preserve newline behavior in multiline editors.
+        // Normal multiline editor: insert a real newline and keep composing.
         if (isMultiLine) {
             ic.commitText("\n", 1)
         } else {
-            // Fallback for ordinary text fields without an advertised action.
             ic.commitText("\n", 1)
         }
     }
