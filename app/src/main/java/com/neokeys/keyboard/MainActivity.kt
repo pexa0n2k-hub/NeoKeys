@@ -29,7 +29,7 @@ class MainActivity : Activity() {
     private val panel = 0xFF1A2435.toInt()
     private val accent = 0xFF7DCBFF.toInt()
     private var section = 0
-    private lateinit var preview: KeyboardPreview
+    private lateinit var preview: NeoKeyboardView
     private lateinit var controls: LinearLayout
     private lateinit var status: TextView
     private lateinit var side: LinearLayout
@@ -69,7 +69,9 @@ class MainActivity : Activity() {
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(0xFF0C121D.toInt());setPadding(dp(12),dp(16),dp(12),dp(8)) }
         root.addView(text("NeoKeys  /  CREATIVE STUDIO",12f,accent))
         root.addView(text("Tu teclado. Tu diseño.",22f).apply{setPadding(0,dp(4),0,dp(8))})
-        preview=KeyboardPreview(this)
+        preview=NeoKeyboardView(this) { _ -> }
+        // The studio preview is display-only: never send preview taps to an input field.
+        preview.setOnTouchListener { _, _ -> true }
         root.addView(preview,LinearLayout.LayoutParams(-1,dp(192)))
         status=text("Vista previa interactiva de los ajustes visuales",11f,muted)
         root.addView(status,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(6);bottomMargin=dp(12)})
@@ -219,48 +221,5 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults)
         if(requestCode==202) status.text=if(grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED) "Micrófono permitido" else "Permiso de micrófono no concedido"
-    }
-    private inner class KeyboardPreview(ctx:Context):View(ctx) {
-        private val p=Paint(Paint.ANTI_ALIAS_FLAG)
-        override fun onDraw(c:Canvas) {
-            super.onDraw(c)
-            val theme=prefs.getString("theme","violet")?:"violet"
-            val (bg,key,highlight)=when(theme) {
-                "cyber"->Triple(0xFF061321.toInt(),0xFF17415B.toInt(),0xFF32E8FF.toInt())
-                "ivory"->Triple(0xFFEDE6DA.toInt(),0xFFF9F5ED.toInt(),0xFF8B6742.toInt())
-                "emerald"->Triple(0xFF071C15.toInt(),0xFF16614D.toInt(),0xFF35E6B0.toInt())
-                "crimson"->Triple(0xFF220B10.toInt(),0xFF5A1A2B.toInt(),0xFFFF3B4E.toInt())
-                "sakura"->Triple(0xFF32172B.toInt(),0xFFE4B5D5.toInt(),0xFFE66BC2.toInt())
-                "holographic"->Triple(0xFF08152F.toInt(),0xFF194FAD.toInt(),0xFF31D8FF.toInt())
-                "titanium"->Triple(0xFF10151D.toInt(),0xFF475364.toInt(),0xFFBFC9D8.toInt())
-                else->Triple(0xFF140C25.toInt(),0xFF5A3291.toInt(),0xFFB45CFF.toInt())
-            }
-            val a=try{prefs.getInt("accent_color",highlight)}catch(_:ClassCastException){highlight}
-            p.color=bg;c.drawRoundRect(0f,0f,width.toFloat(),height.toFloat(),dp(15).toFloat(),dp(15).toFloat(),p)
-            val rows=listOf("QWERTYUIOP","ASDFGHJKLÑ","⇧ZXCVBNM⌫")
-            val pad=dp(8).toFloat();val gap=dp(3).toFloat();val top=dp(34).toFloat();val rowHeight=(height-top-dp(8))/4f
-            p.textAlign=Paint.Align.CENTER;p.textSize=dp(11).toFloat();p.color=a
-            c.drawText("☰      hola           cómo          estás       🎙",width/2f,dp(23).toFloat(),p)
-            val shape=prefs.getString("key_shape","rounded")?:"rounded"
-            val radius=when(shape){"square"->0f;"pill"->dp(18).toFloat();"super"->dp(15).toFloat();else->dp(6).toFloat()}
-            val alpha=(prefs.getInt("key_opacity",90)*255/100).coerceIn(0,255)
-            fun drawRow(labels:List<String>,index:Int) {
-                val cell=(width-2*pad-gap*(labels.size-1))/labels.size
-                labels.forEachIndexed { i, label ->
-                    val x=pad+i*(cell+gap);val y=top+index*rowHeight
-                    val rect=RectF(x,y,x+cell,y+rowHeight-gap)
-                    p.color=key;p.alpha=alpha
-                    if(shape=="hexagon") {
-                        val path=android.graphics.Path();val cut=rect.width()*.14f
-                        path.moveTo(x+cut,y);path.lineTo(rect.right-cut,y);path.lineTo(rect.right,rect.centerY());path.lineTo(rect.right-cut,rect.bottom);path.lineTo(x+cut,rect.bottom);path.lineTo(x,rect.centerY());path.close();c.drawPath(path,p)
-                    } else c.drawRoundRect(rect,radius,radius,p)
-                    p.alpha=255;p.color=if(theme=="ivory"||theme=="sakura") Color.BLACK else Color.WHITE
-                    p.textSize=dp(if(label.length>3) 9 else 11).toFloat()
-                    c.drawText(label,rect.centerX(),rect.centerY()-(p.ascent()+p.descent())/2,p)
-                }
-            }
-            rows.forEachIndexed {i,s->drawRow(s.map{it.toString()},i)}
-            drawRow(listOf("?123","🌐",",","Español",".","↵"),3)
-        }
     }
 }
