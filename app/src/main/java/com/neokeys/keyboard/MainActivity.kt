@@ -35,7 +35,7 @@ class MainActivity : Activity() {
     private lateinit var side: LinearLayout
     private val sections = listOf("Inicio", "Temas", "Teclas", "Fondos", "Efectos", "Avanzado", "Perfiles")
     private val themeNames = listOf("Violet Glass" to "violet", "Cyber Pulse" to "cyber", "Ivory Minimal" to "ivory", "Emerald OS" to "emerald", "Crimson" to "crimson", "Sakura" to "sakura", "Holographic" to "holographic", "Titanium" to "titanium")
-    private val snapshotKeys = listOf("theme", "key_shape", "press_effect", "keyboard_background_uri", "accent_color", "key_opacity", "glass_intensity", "keyboard_height_dp", "haptics_enabled", "autocorrect_enabled")
+    private val snapshotKeys = listOf("theme", "key_shape", "press_effect", "keyboard_background_uri", "accent_color", "key_opacity", "glass_intensity", "keyboard_height_dp", "haptics_enabled", "autocorrect_enabled", "background_zoom", "background_x", "background_y", "background_brightness", "background_saturation", "background_overlay_color", "background_overlay_alpha")
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     private fun text(s: String, size: Float = 14f, color: Int = ink) = TextView(this).apply { text=s; textSize=size; setTextColor(color) }
     private fun shape(color: Int, radius: Int = 16, stroke: Int? = null) = GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat(); if(stroke!=null) setStroke(dp(1),stroke) }
@@ -129,13 +129,61 @@ class MainActivity : Activity() {
         slider("Altura del teclado", "keyboard_height_dp",230,360,278)
     }
     private fun backgrounds() {
-        val b=block("Background Studio", "Usa una imagen de tu galería como fondo del teclado")
-        b.addView(button("Seleccionar fotografía") {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{addCategory(Intent.CATEGORY_OPENABLE);type="image/*"},101)
+        val image = block("Imagen de fondo", "Selecciona una fotografía y ajusta cómo aparece detrás de las teclas")
+        image.addView(button("Seleccionar fotografía") {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }, 101)
         })
-        b.addView(button("Quitar fotografía") {prefs.edit().remove("keyboard_background_uri").apply();updated()})
-        addBlock(b)
-        slider("Intensidad de cristal", "glass_intensity",0,100,70)
+        image.addView(button("Quitar fotografía") {
+            prefs.edit().remove("keyboard_background_uri").apply()
+            updated()
+        })
+        addBlock(image)
+
+        slider("Zoom de imagen", "background_zoom", 100, 250, 100)
+        slider("Posición horizontal", "background_x", -100, 100, 0)
+        slider("Posición vertical", "background_y", -100, 100, 0)
+        slider("Brillo", "background_brightness", 50, 150, 100)
+        slider("Saturación", "background_saturation", 0, 200, 100)
+
+        val overlay = block("Capa de color", "Añade un tinte sobre la fotografía para combinarla con tu tema")
+        val colors = listOf(
+            "Sin color" to 0x00000000,
+            "Violeta" to 0xFF713BC0.toInt(),
+            "Cian" to 0xFF087E9B.toInt(),
+            "Rosa" to 0xFFB83F79.toInt(),
+            "Negro" to 0xFF000000.toInt(),
+            "Blanco" to 0xFFFFFFFF.toInt()
+        )
+        choiceGrid(
+            overlay,
+            colors.map { it.first to it.second.toUInt().toString() },
+            prefs.getInt("background_overlay_color", 0).toUInt().toString()
+        ) { selected ->
+            val color = selected.toUInt().toInt()
+            prefs.edit().putInt("background_overlay_color", color).apply()
+            updated()
+        }
+        addBlock(overlay)
+        slider("Intensidad de la capa", "background_overlay_alpha", 0, 180, 0)
+
+        val reset = block("Restablecer fondo", "Restaura el encuadre y los ajustes de imagen sin eliminar tu fotografía")
+        reset.addView(button("Restablecer ajustes de imagen") {
+            prefs.edit()
+                .putInt("background_zoom", 100)
+                .putInt("background_x", 0)
+                .putInt("background_y", 0)
+                .putInt("background_brightness", 100)
+                .putInt("background_saturation", 100)
+                .putInt("background_overlay_color", 0)
+                .putInt("background_overlay_alpha", 0)
+                .apply()
+            updated()
+        })
+        addBlock(reset)
     }
     private fun effects() {
         val b=block("Effects Engine", "Efecto visual al presionar")

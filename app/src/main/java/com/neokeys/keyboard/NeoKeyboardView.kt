@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -104,7 +106,7 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
 
     fun toggleLanguage() { english = !english; invalidate() }
     fun toggleShift() { shifted = !shifted; invalidate() }
-    fun refreshAppearance() { backgroundBitmap = null; loadedBackgroundUri = null; invalidate(); requestLayout() }
+    fun refreshAppearance() { invalidate(); requestLayout() }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -142,11 +144,48 @@ class NeoKeyboardView(context: Context, private val onKey: (String) -> Unit) : V
             val top = (bitmap.height - cropHeight) / 2
             Rect(0, top, bitmap.width, top + cropHeight)
         }
-        canvas.drawBitmap(bitmap, src, RectF(0f, 0f, width.toFloat(), height.toFloat()), imagePaint)
+        // Adjustable crop: zoom and pan are applied to the source rectangle.
+        val zoom = (prefs.getInt("background_zoom", 100).coerceIn(100, 250) / 100f)
+        val cropW = (src.width() / zoom).toInt().coerceAtLeast(1)
+        val cropH = (src.height() / zoom).toInt().coerceAtLeast(1)
+        val maxLeft = (bitmap.width - cropW).coerceAtLeast(0)
+        val maxTop = (bitmap.height - cropH).coerceAtLeast(0)
+        val panX = prefs.getInt("background_x", 0).coerceIn(-100, 100) / 100f
+        val panY = prefs.getInt("background_y", 0).coerceIn(-100, 100) / 100f
+        val left = ((bitmap.width - cropW) / 2f + panX * maxLeft / 2f).toInt().coerceIn(0, maxLeft)
+        val top = ((bitmap.height - cropH) / 2f + panY * maxTop / 2f).toInt().coerceIn(0, maxTop)
+        val adjustedSrc = Rect(left, top, left + cropW, top + cropH)
+
+        val brightness = prefs.getInt("background_brightness", 100).coerceIn(50, 150) / 100f
+        val saturation = prefs.getInt("background_saturation", 100).coerceIn(0, 200) / 100f
+        val matrix = ColorMatrix().apply {
+            setSaturation(saturation)
+            val values = floatArrayOf(
+                brightness, 0f, 0f, 0f, 0f,
+                0f, brightness, 0f, 0f, 0f,
+                0f, 0f, brightness, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            postConcat(ColorMatrix(values))
+        }
+        imagePaint.colorFilter = ColorMatrixColorFilter(matrix)
+        canvas.drawBitmap(bitmap, adjustedSrc, RectF(0f, 0f, width.toFloat(), height.toFloat()), imagePaint)
+        imagePaint.colorFilter = null
+
+        // Original glass veil, adjustable through the existing glass intensity.
         paint.style = Paint.Style.FILL
         paint.color = 0xFF07111F.toInt()
         paint.alpha = (155 - glassIntensity * 0.85f).toInt().coerceIn(35, 155)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+        // Optional color overlay.
+        val overlayColor = prefs.getInt("background_overlay_color", 0)
+        val overlayAlpha = prefs.getInt("background_overlay_alpha", 0).coerceIn(0, 180)
+        if (overlayColor != 0 && overlayAlpha > 0) {
+            paint.color = overlayColor
+            paint.alpha = overlayAlpha
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        }
         paint.alpha = 255
     }
 
