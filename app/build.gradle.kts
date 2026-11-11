@@ -11,8 +11,8 @@ android {
         applicationId = "com.neokeys.keyboard"
         minSdk = 23
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.0"
+        versionCode = 9
+        versionName = "2.3"
     }
 
     compileOptions {
